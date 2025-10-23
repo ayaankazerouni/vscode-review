@@ -2,6 +2,11 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
+import { randomUUID } from 'crypto';
+
+import { Comment, FileComment, LineComment } from './types';
+
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -18,15 +23,63 @@ export function activate(context: vscode.ExtensionContext) {
 		// Display a message box to the user
 		// vscode.window.showInformationMessage('Hello World from vscode-review!');
 
+		const currentDocument = vscode.window.activeTextEditor?.document;
 		const selection = getSelection();
-		if (selection && !selection.isEmpty) {
-			vscode.window.showInformationMessage(`${selection.start.line + 1}--${selection.end.line + 1}`);
+		const commentId = randomUUID();
+
+		if (currentDocument) {
+			if (selection && !selection.isEmpty) {
+				// LineComment
+				const startLine = selection.start.line + 1; // Convert to 1-based
+				const endLine = selection.end.line + 1;     // Convert to 1-based
+				const lineComment: LineComment = {
+					commentId,
+					commentText: 'This is a line comment',
+					filePath: vscode.workspace.asRelativePath(currentDocument.uri),
+					startLine,
+					endLine
+				};
+				putComment(context, lineComment);
+				vscode.window.showInformationMessage(`Added LineComment to ${currentDocument.fileName} from line ${startLine} to ${endLine}`);
+			} else {
+				// FileComment
+				const fileComment: FileComment = {
+					commentId,
+					commentText: 'This is a file comment',
+					filePath: vscode.workspace.asRelativePath(currentDocument.uri)
+				};
+				putComment(context, fileComment);
+				vscode.window.showInformationMessage(`Added FileComment to ${currentDocument.fileName}`);
+			}
 		} else {
-			vscode.window.showInformationMessage('no selection');
+			// Project-wide Comment
+			const projectComment: Comment = {
+				commentId,
+				commentText: 'This is a project-wide comment'
+			};
+			putComment(context, projectComment);
+			vscode.window.showInformationMessage('Added Project-wide Comment');
 		}
 	});
 
 	context.subscriptions.push(disposable);
+}
+
+/**
+ * Update or add a comment in the workspace state.
+ * 
+ * @param context The extension context
+ * @param comment The comment to add or update
+ */
+function putComment(context: vscode.ExtensionContext, comment: Comment) {
+	const comments = context.workspaceState.get<Comment[]>('vscode-review', []);
+	const found = comments.find(c => c.commentId === comment.commentId);
+	if (found) {
+		Object.assign(found, comment);
+	} else {
+		comments.push(comment);
+	}
+	context.workspaceState.update('vscode-review', comments);
 }
 
 function getSelection() {
