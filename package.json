@@ -1,5 +1,6 @@
 {
   "name": "vscode-review",
+  "publisher": "ayaankazerouni",
   "displayName": "vscode-review",
   "description": "A teaching tool to review local projects and produce HTML reports with markup.",
   "version": "0.0.1",
@@ -27,6 +28,11 @@
         "command": "vscode-review.stopReview",
         "title": "Stop review",
         "when": "vscode-review.isReviewing"
+      },
+      {
+        "command": "vscode-review.saveComment",
+        "title": "Save comment",
+        "when": "false"
       }
     ],
     "menus": {
@@ -42,6 +48,12 @@
         {
           "command": "vscode-review.stopReview",
           "when": "vscode-review.isReviewing"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "vscode-review.saveComment",
+          "when": "commentController == vscode-review"
         }
       ]
     }

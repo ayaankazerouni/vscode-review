@@ -9,9 +9,6 @@ import { Comment, FileComment, LineComment } from './types';
 export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.executeCommand('setContext', 'vscode-review.isReviewing', false);
 
-	const comments: Comment[] = loadComments(context);
-	console.log('Loaded comments:', comments);
-
 	// Set up the status bar item.
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 1000);
 	statusBarItem.text = "$(eye) REVIEWING";
@@ -24,6 +21,19 @@ export function activate(context: vscode.ExtensionContext) {
 		rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
 		cursor: 'default'
 	});
+
+	// Use the Comment API to set up commenting UI
+	const commentController = vscode.comments.createCommentController('vscode-review', 'VSCode Review');
+	commentController.options = {
+		placeHolder: 'Write a comment here...'
+	};
+	commentController.commentingRangeProvider = {
+		provideCommentingRanges: (document: vscode.TextDocument, token: vscode.CancellationToken): vscode.Range[] => {
+			return [
+				new vscode.Range(0, 0, document.lineCount, 0)
+			];
+		}
+	};
 
 	// State
 	let isReviewing = false;
@@ -53,7 +63,12 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// Add comment: this command is only available when reviewing.
 		vscode.commands.registerCommand('vscode-review.addComment', () => {
-			handleSaveComment(context);
+			handleWriteComment(context, commentController);
+		}),
+
+		// Save comment: this command is triggered from a comment thread context menu.
+		vscode.commands.registerCommand('vscode-review.saveComment', (comment: vscode.CommentReply) => {
+			handleSaveNewComment(context, comment);
 		}),
 
 		// Stop review: this command is only available when reviewing.
@@ -72,53 +87,63 @@ export function activate(context: vscode.ExtensionContext) {
 		statusBarItem,
 
 		// Decoration type
-		dimDecorationType
+		dimDecorationType,
+
+		// Comment controller
+		commentController
 	);
+
+	return { context };
 }
 
-function loadComments(context: vscode.ExtensionContext): Comment[] {
+export function loadComments(context: vscode.ExtensionContext): Comment[] {
 	return context.workspaceState.get<Comment[]>('vscode-review', []);
 }
 
-function handleSaveComment(context: vscode.ExtensionContext) {
+export function handleSaveNewComment(context: vscode.ExtensionContext, comment: vscode.CommentReply) {
+	const { text, thread } = comment;
+	if (thread.range) {
+		const { start, end } = thread.range;
+		const lineComment: LineComment = {
+			commentId: randomUUID(),
+			commentText: text,
+			filePath: vscode.workspace.asRelativePath(thread.uri),
+			startLine: start.line + 1, // Convert to 1-based
+			endLine: end.line + 1      // Convert to 1-based
+		};
+		putComment(context, lineComment);
+	}
+}
+
+export function handleWriteComment(context: vscode.ExtensionContext, commentController: vscode.CommentController) {
 	const currentDocument = vscode.window.activeTextEditor?.document;
+	const relativeFilePath = currentDocument ? vscode.workspace.asRelativePath(currentDocument.uri) : null;
 	const selection = getSelection();
-	const commentId = randomUUID();
 
-	const comments = loadComments(context);
-
-	if (currentDocument) {
+	if (currentDocument && relativeFilePath) {
 		if (selection && !selection.isEmpty) {
-			// LineComment
-			const startLine = selection.start.line + 1; // Convert to 1-based
-			const endLine = selection.end.line + 1;     // Convert to 1-based
-			const lineComment: LineComment = {
-				commentId,
-				commentText: 'This is a line comment',
-				filePath: vscode.workspace.asRelativePath(currentDocument.uri),
-				startLine,
-				endLine
-			};
-			putComment(context, lineComment);
-			vscode.window.showInformationMessage(`Added LineComment to ${currentDocument.fileName} from line ${startLine} to ${endLine}`);
+			// Create a comment thread
+			const range = new vscode.Range(selection.start, selection.end);
+			const thread = commentController.createCommentThread(currentDocument.uri, range, []);
+			thread.canReply = true;
+			thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
 		} else {
-			// FileComment
-			const fileComment: FileComment = {
-				commentId,
-				commentText: 'This is a file comment',
-				filePath: vscode.workspace.asRelativePath(currentDocument.uri)
-			};
-			putComment(context, fileComment);
-			vscode.window.showInformationMessage(`Added FileComment to ${currentDocument.fileName}`);
+			// Create a comment thread for the whole file
+			const fullRange = new vscode.Range(0, 0, currentDocument.lineCount, 0);
+			const thread = commentController.createCommentThread(currentDocument.uri, fullRange, []);
+			thread.canReply = true;
+			thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
+
+			// Scroll the editor to the top
+			const editor = vscode.window.activeTextEditor;
+			if (editor) {
+				const topPosition = new vscode.Position(0, 0);
+				editor.revealRange(new vscode.Range(topPosition, topPosition), vscode.TextEditorRevealType.AtTop);
+			}
 		}
 	} else {
 		// Project-wide Comment
-		const projectComment: Comment = {
-			commentId,
-			commentText: 'This is a project-wide comment'
-		};
-		putComment(context, projectComment);
-		vscode.window.showInformationMessage('Added Project-wide Comment');
+		vscode.window.showInformationMessage('Project-wide comments are not implemented yet.');
 	}
 }
 
@@ -128,7 +153,7 @@ function handleSaveComment(context: vscode.ExtensionContext) {
  * @param context The extension context
  * @param comment The comment to add or update
  */
-function putComment(context: vscode.ExtensionContext, comment: Comment) {
+export function putComment(context: vscode.ExtensionContext, comment: Comment) {
 	const comments = loadComments(context);
 	const found = comments.find(c => c.commentId === comment.commentId);
 	if (found) {
