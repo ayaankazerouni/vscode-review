@@ -14,10 +14,37 @@
   "contributes": {
     "commands": [
       {
-        "command": "vscode-review.helloWorld",
-        "title": "Hello World"
+        "command": "vscode-review.startReview",
+        "title": "Start review",
+        "when": "!vscode-review.isReviewing"
+      },
+      {
+        "command": "vscode-review.addComment",
+        "title": "Add Comment",
+        "when": "vscode-review.isReviewing"
+      },
+      {
+        "command": "vscode-review.stopReview",
+        "title": "Stop review",
+        "when": "vscode-review.isReviewing"
       }
-    ]
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "vscode-review.startReview",
+          "when": "!vscode-review.isReviewing"
+        },
+        {
+          "command": "vscode-review.addComment",
+          "when": "vscode-review.isReviewing"
+        },
+        {
+          "command": "vscode-review.stopReview",
+          "when": "vscode-review.isReviewing"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "yarn run compile",
